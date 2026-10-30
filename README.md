@@ -9,6 +9,7 @@ and turns that into per-task token and cost accounting plus a daily report.
 
 - **Per-task accounting.** One task = one worktree + branch. Tokens (input, output, cache read/write) and estimated cost per task.
 - **Multi-agent.** Claude Code and Codex today, normalized into one event model.
+- **Dashboard.** A self-contained HTML page: cost per day by agent, and every task in the period.
 - **Daily report.** Markdown or JSON: totals, per-agent split, per-task table, and the commits each task produced that day.
 - **Local and private.** Reads files on your machine; nothing is uploaded.
 
@@ -20,7 +21,10 @@ npm install && npm run build
 node dist/src/cli.js report                       # today, to stdout
 node dist/src/cli.js report --date 2026-10-30 --out reports/2026-10-30.md
 node dist/src/cli.js report --json                 # machine-readable
+node dist/src/cli.js dashboard --days 14           # writes reports/dashboard.html
 ```
+
+![Dashboard](docs/dashboard.png)
 
 ## How it works
 
@@ -46,7 +50,7 @@ Log locations respect `CLAUDE_CONFIG_DIR` and `CODEX_HOME`, or pass `--claude-di
 
 ## Roadmap
 
-See [docs/ROADMAP.md](docs/ROADMAP.md): web dashboard, Orca workspace names, multi-approach comparison with automated evals, scheduled email digests.
+See [docs/ROADMAP.md](docs/ROADMAP.md): Orca workspace names, multi-approach comparison with automated evals, scheduled email digests.
 
 ## Development
 

@@ -90,3 +90,20 @@ test("gitResolver maps a linked worktree back to its repo", () => {
   assert.equal(info.repo, "wishlist");
   assert.equal(info.worktree, normalizePath(wt));
 });
+
+test("dashboard: buckets days, fills gaps, escapes HTML", async () => {
+  const { dailyStats, renderDashboard } = await import("../src/dashboard.js");
+  const base = { agent: "claude-code" as const, sessionId: "s", cwd: "/w", model: "m", inputTokens: 100, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+  const from = new Date(2026, 9, 28);
+  const events = [
+    { ...base, timestamp: new Date(2026, 9, 28, 10).toISOString() },
+    { ...base, timestamp: new Date(2026, 9, 30, 10).toISOString() },
+    { ...base, timestamp: new Date(2026, 9, 30, 11).toISOString() },
+  ];
+  const days = dailyStats(events, from, 3, () => 1);
+  assert.deepEqual(days.map((d) => d.costUsd), [1, 0, 2]);
+  assert.deepEqual(days.map((d) => d.date), ["2026-10-28", "2026-10-29", "2026-10-30"]);
+  const html = renderDashboard({ from: "2026-10-28", to: "2026-10-30", days, tasks: summarizeTasks(events.map((e) => ({ ...e, branch: "<b>x" })), flatResolver) });
+  assert.match(html, /\$3\.00/);
+  assert.ok(!html.includes("<b>x"));
+});
