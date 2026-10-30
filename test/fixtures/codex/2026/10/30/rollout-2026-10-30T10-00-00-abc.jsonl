@@ -1,0 +1,6 @@
+{"timestamp":"2026-10-30T10:00:00.000Z","type":"session_meta","payload":{"id":"cx1","cwd":"/work/wishlist-alt","git":{"branch":"feat/login-v2"}}}
+{"timestamp":"2026-10-30T10:00:01.000Z","type":"turn_context","payload":{"model":"gpt-5-codex","cwd":"/work/wishlist-alt"}}
+{"timestamp":"2026-10-30T10:00:10.000Z","type":"event_msg","payload":{"type":"token_count","info":null}}
+{"timestamp":"2026-10-30T10:00:20.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":3000,"cached_input_tokens":1000,"output_tokens":400,"total_tokens":3400}}}}
+{"timestamp":"2026-10-30T10:00:21.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":3000,"cached_input_tokens":1000,"output_tokens":400,"total_tokens":3400}}}}
+{"timestamp":"2026-10-30T10:05:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":8000,"cached_input_tokens":4000,"output_tokens":900,"total_tokens":8900}}}}
