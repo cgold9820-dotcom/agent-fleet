@@ -12,7 +12,7 @@ import { agentBreakdown, buildReport, dayWindow, inWindow, localDate, renderMark
 import { readClaudeUsage } from "./sources/claude.js";
 import { readCodexUsage } from "./sources/codex.js";
 import { readOrcaWorkspaces } from "./sources/orca.js";
-import { attachNames, commitsBetween, gitResolver, summarizeTasks } from "./tasks.js";
+import { attachNames, commitsBetween, gitResolver, pathKey, summarizeTasks } from "./tasks.js";
 import type { UsageEvent } from "./types.js";
 
 const HELP = `agent-fleet: token & cost accounting for parallel coding agents
@@ -113,14 +113,14 @@ async function main() {
     const { from, to } = lastDays(30);
     const tasks = summarizeTasks(await load(from, to), gitResolver(), prices);
     const client = values.judge ? new Anthropic() : undefined;
-    const orca = readOrcaWorkspaces(values["orca-db"]);
+    const orcaNames = new Map([...readOrcaWorkspaces(values["orca-db"])].map(([p, w]) => [pathKey(p), w]));
     const candidates: Candidate[] = [];
     for (const p of paths) {
       const worktree = gitResolver()(p).worktree;
       console.error(`Checking ${worktree}${values.test ? ` (running: ${values.test})` : ""}`);
       const c: Candidate = {
         worktree,
-        name: orca.get(worktree)?.name,
+        name: orcaNames.get(pathKey(worktree))?.name,
         ...diffStats(p, values.base!),
         ...(values.test ? { test: runTests(p, values.test) } : {}),
         ...usageFor(worktree, tasks),

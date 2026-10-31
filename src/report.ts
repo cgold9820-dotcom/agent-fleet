@@ -1,3 +1,4 @@
+import { mdCell } from "./compare.js";
 import type { TaskSummary, UsageEvent } from "./types.js";
 import { emptyTotals, totalTokens } from "./types.js";
 
@@ -86,7 +87,7 @@ export function renderMarkdown(r: DailyReport): string {
   );
   for (const k of r.tasks) {
     lines.push(
-      `| ${k.name ?? "-"} | ${k.repo} | \`${k.branch}\` | ${k.agents.join(", ")} | ${fmtTime(k.firstSeen)}–${fmtTime(k.lastSeen)} | ${fmtTokens(
+      `| ${k.name ? mdCell(k.name) : "-"} | ${k.repo} | \`${k.branch}\` | ${k.agents.join(", ")} | ${fmtTime(k.firstSeen)}–${fmtTime(k.lastSeen)} | ${fmtTokens(
         k.inputTokens + k.cacheWriteTokens,
       )} | ${fmtTokens(k.outputTokens)} | ${fmtTokens(k.cacheReadTokens)} | ${fmtUsd(k.costUsd)} | ${k.commits.length} |`,
     );

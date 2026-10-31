@@ -174,6 +174,10 @@ test("orca: reads workspace names from the profile database", async () => {
   const names = parseWorktreeMeta(payload);
   assert.deepEqual(names.get("e:/wishlist-ws/login"), { name: "Login page", comment: "try OAuth", agent: "claude" });
   assert.equal(names.size, 1, "entries without a display name are ignored");
+  const { attachNames } = await import("../src/tasks.js");
+  const t = [{ worktree: "e:/Wishlist-WS/Login" }] as any[];
+  attachNames(t, names);
+  assert.equal(t[0].name, "Login page", "Windows paths match case-insensitively");
 
   assert.equal(readOrcaWorkspaces(join(tmpdir(), "no-such-orca.db")).size, 0);
 
@@ -243,6 +247,13 @@ test("compare ranking uses judge score after tests; pick records decisions", asy
     { ...base, branch: "unjudged-cheap", test: pass, judge: skipped, costUsd: 0.1 },
   ]);
   assert.deepEqual(withSkip.map((c) => c.branch), ["unjudged-cheap", "scored-low"], "a failed review does not count as a zero");
+  // Mixed scored/skipped sets must still sort the same whatever the input order.
+  const A = { ...base, branch: "A", test: pass, judge: scored(9), costUsd: 3 };
+  const B = { ...base, branch: "B", test: pass, judge: skipped, costUsd: 2 };
+  const C = { ...base, branch: "C", test: pass, judge: scored(1), costUsd: 1 };
+  for (const order of [[A, B, C], [B, A, C], [B, C, A], [C, A, B]]) {
+    assert.deepEqual(rankCandidates(order).map((c) => c.branch), ["C", "B", "A"]);
+  }
   assert.match(renderComparison("main", ranked), /\| 9\/10 \|/);
 
   const dir = mkdtempSync(join(tmpdir(), "fleet-pick-"));
