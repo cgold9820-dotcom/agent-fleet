@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 import Anthropic from "@anthropic-ai/sdk";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { execSync } from "node:child_process";
 import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { costUsd, findPrice, loadPricing } from "./pricing.js";
 import { diffStats, listWorktrees, rankCandidates, renderComparison, runTests, usageFor, type Candidate } from "./compare.js";
 import { dailyStats, renderDashboard } from "./dashboard.js";
+import { assertEmail, scheduleCommand, sendReport, smtpFromEnv, smtpTransport } from "./email.js";
 import { decisionsPath, recordDecision, saveComparison } from "./decisions.js";
 import { DEFAULT_JUDGE_MODEL, fullDiff, judgeAttempt } from "./judge.js";
 import { agentBreakdown, buildReport, dayWindow, inWindow, localDate, renderMarkdown } from "./report.js";
@@ -22,6 +25,8 @@ Usage:
   agent-fleet compare <worktree>... | --worktrees-of <repo>  [--base main] [--test CMD] [--days 30]
                       [--judge --brief "what the task asked for" [--model ID]]
   agent-fleet pick <branch> [--note "why"]
+  agent-fleet email --to ADDRESS [--date YYYY-MM-DD] [--dry-run]
+  agent-fleet schedule --to ADDRESS [--time 21:00] [--install]
 
 Options:
   --date      Day to report on, local time (default: today)
@@ -33,6 +38,10 @@ Options:
   --brief     The task description the attempts were given (or --brief-file FILE)
   --model     Judge model (default: ${DEFAULT_JUDGE_MODEL})
   --note      Why you picked this candidate (stored with the decision)
+  --to        Recipient of the daily report email (SMTP settings come from SMTP_* env vars)
+  --dry-run   Print the email instead of sending it
+  --time      Daily send time for schedule, 24h HH:MM (default: 21:00)
+  --install   Register the schedule (Task Scheduler on Windows, crontab elsewhere)
   --out       Write the report to FILE instead of stdout
   --json      Emit JSON instead of Markdown
   --pricing   JSON file of per-model prices (USD per 1M tokens) to override defaults
@@ -55,6 +64,10 @@ async function main() {
       "brief-file": { type: "string" },
       model: { type: "string" },
       note: { type: "string" },
+      to: { type: "string" },
+      "dry-run": { type: "boolean", default: false },
+      time: { type: "string", default: "21:00" },
+      install: { type: "boolean", default: false },
       out: { type: "string" },
       json: { type: "boolean", default: false },
       pricing: { type: "string" },
@@ -76,7 +89,19 @@ async function main() {
     console.log(`Recorded in ${decisionsPath(process.cwd())}`);
     return;
   }
-  if (!["report", "dashboard", "compare"].includes(cmd)) throw new Error(`Unknown command: ${cmd}\n\n${HELP}`);
+  if (cmd === "schedule") {
+    if (!values.to) throw new Error("schedule needs --to ADDRESS");
+    const command = scheduleCommand({ time: values.time!, to: values.to, node: process.execPath, cli: fileURLToPath(import.meta.url) });
+    if (values.install) {
+      execSync(command, { stdio: "inherit" });
+      console.log(`Scheduled a daily report to ${values.to} at ${values.time}. SMTP_* variables must be set for that user (on Windows: setx SMTP_HOST ...).`);
+    } else {
+      console.log(command);
+      console.log("\nRun the line above, or re-run with --install.");
+    }
+    return;
+  }
+  if (!["report", "dashboard", "compare", "email"].includes(cmd)) throw new Error(`Unknown command: ${cmd}\n\n${HELP}`);
 
   const prices = loadPricing(values.pricing);
   const costOf = (e: UsageEvent) => {
@@ -136,6 +161,23 @@ async function main() {
     const tasks = summarizeTasks(events, gitResolver(), prices);
     text = renderDashboard({ from: localDate(from), to: localDate(), days: dailyStats(events, from, days, costOf), tasks });
     values.out ??= "reports/dashboard.html";
+  } else if (cmd === "email") {
+    if (!values.to) throw new Error("email needs --to ADDRESS");
+    assertEmail(values.to);
+    const date = values.date ?? localDate();
+    const { from, to } = dayWindow(date);
+    const events = await load(from, to);
+    const tasks = summarizeTasks(events, gitResolver(), prices);
+    for (const t of tasks) t.commits = commitsBetween(t.worktree, from, to);
+    const markdown = renderMarkdown(buildReport(date, tasks, agentBreakdown(events, costOf)));
+    if (values["dry-run"]) {
+      console.log(`To: ${values.to}\nSubject: Agent fleet report: ${date}\n\n${markdown}`);
+    } else {
+      const smtp = smtpFromEnv();
+      await sendReport(smtpTransport(smtp), { from: smtp.from, to: values.to, date, markdown });
+      console.error(`Sent the ${date} report to ${values.to}`);
+    }
+    return;
   } else {
     const date = values.date ?? localDate();
     const { from, to } = dayWindow(date);

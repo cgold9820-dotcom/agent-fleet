@@ -223,3 +223,27 @@ test("compare ranking uses judge score after tests; pick records decisions", asy
   assert.deepEqual(lines.map((d) => [d.chosen, d.note]), [["low", "simpler"], ["high", undefined]]);
   assert.equal(recordDecision(dir, "/w\\").chosen, "high", "worktree paths are normalized before matching");
 });
+
+test("email: env config, HTML rendering, sending and scheduler commands", async () => {
+  const { assertEmail, reportToHtml, scheduleCommand, sendReport, smtpFromEnv } = await import("../src/email.js");
+  assert.throws(() => smtpFromEnv({}), /Missing SMTP_HOST, SMTP_USER, SMTP_PASS/);
+  const cfg = smtpFromEnv({ SMTP_HOST: "smtp.gmail.com", SMTP_USER: "me@gmail.com", SMTP_PASS: "app-pass" });
+  assert.deepEqual([cfg.port, cfg.secure, cfg.from], [465, true, "me@gmail.com"]);
+  assert.equal(smtpFromEnv({ SMTP_HOST: "h", SMTP_USER: "u", SMTP_PASS: "p", SMTP_PORT: "587" }).secure, false);
+
+  const html = reportToHtml("# Title\n\n| a | b |\n|---|---|\n| 1 | 2 |\n");
+  assert.match(html, /<h1>Title<\/h1>/);
+  assert.match(html, /<table>/);
+
+  const sent: any[] = [];
+  await sendReport({ sendMail: async (m) => void sent.push(m) }, { from: "f@x.com", to: "t@y.com", date: "2026-10-30", markdown: "# hi" });
+  assert.equal(sent[0].subject, "Agent fleet report: 2026-10-30");
+  assert.match(sent[0].html, /<h1>hi<\/h1>/);
+  assert.equal(sent[0].text, "# hi");
+
+  const win = scheduleCommand({ time: "21:00", to: "me@x.com", node: "C:\\node.exe", cli: "C:\\af\\cli.js", platform: "win32" });
+  assert.equal(win, 'schtasks /Create /F /SC DAILY /ST 21:00 /TN agent-fleet-daily /TR "\\"C:\\node.exe\\" \\"C:\\af\\cli.js\\" email --to me@x.com"');
+  assert.match(scheduleCommand({ time: "07:05", to: "me@x.com", node: "/n", cli: "/c", platform: "linux" }), /echo "5 7 \* \* \* '\/n' '\/c' email --to me@x\.com"/);
+  assert.throws(() => scheduleCommand({ time: "25:00", to: "me@x.com", node: "n", cli: "c" }), /HH:MM/);
+  assert.throws(() => assertEmail("me@x.com & calc.exe"), /Not a valid email/);
+});

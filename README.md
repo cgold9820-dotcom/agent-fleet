@@ -14,6 +14,7 @@ and turns that into per-task token and cost accounting plus a daily report.
 - **LLM-as-judge.** Optionally, Claude scores each attempt's diff against the task brief (correctness, scope, quality, tests) with structured output.
 - **Decision log.** `pick` records which attempt you chose and the metrics it was chosen on, building a dataset of which agents and strategies win.
 - **Daily report.** Markdown or JSON: totals, per-agent split, per-task table, and the commits each task produced that day.
+- **Daily email.** Send the report to yourself every evening via SMTP, scheduled with Task Scheduler (Windows) or cron.
 - **Local and private.** Reads files on your machine; nothing is uploaded.
 
 ## Quick start
@@ -41,6 +42,31 @@ Ranking: tests passed, then judge score, then cost, then diff size. Every `pick`
 `.agent-fleet/decisions.jsonl`, including whether you agreed with the top-ranked candidate.
 
 ![Dashboard](docs/dashboard.png)
+
+## Daily email
+
+SMTP settings come from environment variables, so passwords stay out of command lines:
+
+| Variable | Example | Notes |
+|---|---|---|
+| `SMTP_HOST` | `smtp.gmail.com` | |
+| `SMTP_PORT` | `465` | default 465 (TLS); 587 uses STARTTLS |
+| `SMTP_USER` | `you@gmail.com` | |
+| `SMTP_PASS` | app password | for Gmail, create an [app password](https://myaccount.google.com/apppasswords) |
+| `MAIL_FROM` | `you@gmail.com` | optional, defaults to `SMTP_USER` |
+
+```powershell
+# Windows: store the variables for your user (new terminals and scheduled tasks pick them up)
+setx SMTP_HOST smtp.gmail.com
+setx SMTP_USER you@gmail.com
+setx SMTP_PASS "your-app-password"
+
+node dist/src/cli.js email --to you@gmail.com --dry-run   # preview
+node dist/src/cli.js email --to you@gmail.com             # send today's report
+node dist/src/cli.js schedule --to you@gmail.com --time 21:00 --install
+```
+
+`schedule` without `--install` only prints the Task Scheduler (or crontab) command so you can check it first.
 
 ## How it works
 
