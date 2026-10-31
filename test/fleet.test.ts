@@ -107,3 +107,51 @@ test("dashboard: buckets days, fills gaps, escapes HTML", async () => {
   assert.match(html, /\$3\.00/);
   assert.ok(!html.includes("<b>x"));
 });
+
+test("compare: diff stats, tests and token usage per worktree, ranked", async () => {
+  const { diffStats, listWorktrees, parseShortstat, rankCandidates, renderComparison, runTests, usageFor } = await import("../src/compare.js");
+  assert.deepEqual(parseShortstat(" 1 file changed, 2 insertions(+)"), { filesChanged: 1, insertions: 2, deletions: 0 });
+
+  const root = mkdtempSync(join(tmpdir(), "fleet-cmp-"));
+  const repo = join(root, "app");
+  const git = (...args: string[]) => execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...args], { stdio: "ignore" });
+  git("init", "-q", "-b", "main", repo);
+  writeFileSync(join(repo, "check.sh"), "exit 0\n");
+  git("-C", repo, "add", ".");
+  git("-C", repo, "commit", "-qm", "init");
+  const a = join(root, "ws", "v1");
+  const b = join(root, "ws", "v2");
+  git("-C", repo, "worktree", "add", "-q", "-b", "feat/v1", a);
+  git("-C", repo, "worktree", "add", "-q", "-b", "feat/v2", b);
+  writeFileSync(join(a, "impl.txt"), "one\ntwo\n");
+  git("-C", a, "add", ".");
+  git("-C", a, "commit", "-qm", "v1");
+  writeFileSync(join(b, "check.sh"), "echo boom\nexit 3\n"); // uncommitted, still counted
+  writeFileSync(join(b, "notes.md"), "a\nb\nc\n"); // untracked, still counted
+
+  assert.deepEqual(listWorktrees(repo).map(normalizePath), [a, b].map(normalizePath));
+  const sa = diffStats(a, "main");
+  assert.deepEqual([sa.branch, sa.commits, sa.insertions], ["feat/v1", 1, 2]);
+  const sb = diffStats(b, "main");
+  assert.deepEqual([sb.commits, sb.filesChanged, sb.insertions], [0, 2, 5]);
+
+  const ta = runTests(a, "sh check.sh");
+  const tb = runTests(b, "sh check.sh");
+  assert.equal(ta.passed, true);
+  assert.equal(tb.exitCode, 3);
+  assert.match(tb.tail, /boom/);
+
+  const base = { agent: "codex" as const, sessionId: "s", timestamp: "2026-10-30T10:00:00Z", model: "gpt-5", inputTokens: 1e6, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+  const tasks = summarizeTasks([{ ...base, cwd: a, branch: "feat/v1" }, { ...base, cwd: b, branch: "feat/v2" }, { ...base, cwd: b, branch: "feat/v2" }], gitResolver());
+  const ua = usageFor(a, tasks);
+  assert.equal(ua.tokens, 1e6);
+  assert.ok(Math.abs(usageFor(b, tasks).costUsd - 2.5) < 1e-9);
+
+  const ranked = rankCandidates([
+    { worktree: b, ...sb, test: tb, ...usageFor(b, tasks) },
+    { worktree: a, ...sa, test: ta, ...usageFor(a, tasks) },
+  ]);
+  assert.deepEqual(ranked.map((c) => c.branch), ["feat/v1", "feat/v2"]);
+  const md = renderComparison("main", ranked, "sh check.sh");
+  assert.match(md, /FAIL \(exit 3\)/);
+});

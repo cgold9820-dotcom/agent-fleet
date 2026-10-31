@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { parseArgs } from "node:util";
 import { costUsd, findPrice, loadPricing } from "./pricing.js";
+import { diffStats, listWorktrees, rankCandidates, renderComparison, runTests, usageFor, type Candidate } from "./compare.js";
 import { dailyStats, renderDashboard } from "./dashboard.js";
 import { agentBreakdown, buildReport, dayWindow, inWindow, localDate, renderMarkdown } from "./report.js";
 import { readClaudeUsage } from "./sources/claude.js";
@@ -15,10 +16,14 @@ const HELP = `agent-fleet: token & cost accounting for parallel coding agents
 Usage:
   agent-fleet report [--date YYYY-MM-DD] [--out FILE] [--json] [--pricing FILE]
   agent-fleet dashboard [--days 14] [--out reports/dashboard.html] [--pricing FILE]
+  agent-fleet compare <worktree>... | --worktrees-of <repo>  [--base main] [--test CMD] [--days 30]
 
 Options:
   --date      Day to report on, local time (default: today)
-  --days      Number of days the dashboard covers, ending today (default: 14)
+  --days      Days of logs to include, ending today (dashboard: 14, compare: 30)
+  --base      Branch the compared worktrees started from (default: main)
+  --test      Command run in each worktree; exit code 0 counts as passing
+  --worktrees-of  Compare every linked worktree of this repo
   --out       Write the report to FILE instead of stdout
   --json      Emit JSON instead of Markdown
   --pricing   JSON file of per-model prices (USD per 1M tokens) to override defaults
@@ -32,7 +37,10 @@ async function main() {
     allowPositionals: true,
     options: {
       date: { type: "string" },
-      days: { type: "string", default: "14" },
+      days: { type: "string" },
+      base: { type: "string", default: "main" },
+      test: { type: "string" },
+      "worktrees-of": { type: "string" },
       out: { type: "string" },
       json: { type: "boolean", default: false },
       pricing: { type: "string" },
@@ -46,7 +54,7 @@ async function main() {
     console.log(HELP);
     return;
   }
-  if (cmd !== "report" && cmd !== "dashboard") throw new Error(`Unknown command: ${cmd}\n\n${HELP}`);
+  if (!["report", "dashboard", "compare"].includes(cmd)) throw new Error(`Unknown command: ${cmd}\n\n${HELP}`);
 
   const prices = loadPricing(values.pricing);
   const costOf = (e: UsageEvent) => {
@@ -62,14 +70,36 @@ async function main() {
     return inWindow([...claude, ...codex], from, to);
   };
 
-  let text: string;
-  if (cmd === "dashboard") {
-    const days = Number(values.days);
+  const lastDays = (fallback: number) => {
+    const days = Number(values.days ?? fallback);
     if (!Number.isInteger(days) || days < 1) throw new Error(`--days must be a positive integer`);
     const today = dayWindow(localDate());
     const from = new Date(today.from);
     from.setDate(from.getDate() - (days - 1));
-    const events = await load(from, today.to);
+    return { days, from, to: today.to };
+  };
+
+  let text: string;
+  if (cmd === "compare") {
+    const paths = values["worktrees-of"] ? listWorktrees(values["worktrees-of"]) : positionals.slice(1);
+    if (paths.length < 2) throw new Error("compare needs at least two worktrees (pass paths or --worktrees-of <repo>)");
+    const { from, to } = lastDays(30);
+    const tasks = summarizeTasks(await load(from, to), gitResolver(), prices);
+    const candidates: Candidate[] = paths.map((p) => {
+      const worktree = gitResolver()(p).worktree;
+      console.error(`Checking ${worktree}${values.test ? ` (running: ${values.test})` : ""}`);
+      return {
+        worktree,
+        ...diffStats(p, values.base!),
+        ...(values.test ? { test: runTests(p, values.test) } : {}),
+        ...usageFor(worktree, tasks),
+      };
+    });
+    const ranked = rankCandidates(candidates);
+    text = values.json ? JSON.stringify({ base: values.base, test: values.test, candidates: ranked }, null, 2) : renderComparison(values.base!, ranked, values.test);
+  } else if (cmd === "dashboard") {
+    const { days, from, to } = lastDays(14);
+    const events = await load(from, to);
     const tasks = summarizeTasks(events, gitResolver(), prices);
     text = renderDashboard({ from: localDate(from), to: localDate(), days: dailyStats(events, from, days, costOf), tasks });
     values.out ??= "reports/dashboard.html";
