@@ -1,12 +1,14 @@
 {
-  "name": "agent-fleet",
-  "version": "0.1.0",
-  "description": "Observability sidecar for parallel coding agents: per-task token & cost accounting across Claude Code and Codex, mapped to git worktrees (Orca-friendly), with daily reports.",
+  "name": "agent-fleet-cli",
+  "version": "0.4.0",
+  "description": "Manage parallel coding agents like a team: per-task token and cost accounting for Claude Code and Codex mapped to git worktrees (Orca-aware), side-by-side comparison with LLM-as-judge scoring, dashboards and daily email reports.",
   "main": "dist/src/index.js",
   "scripts": {
     "build": "tsc -p .",
     "test": "npm run build && node --test dist/test/fleet.test.js",
-    "start": "node dist/src/cli.js"
+    "start": "node dist/src/cli.js",
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "prepublishOnly": "npm run clean && npm test"
   },
   "keywords": [
     "ai-agents",
@@ -15,7 +17,10 @@
     "orca",
     "llm-observability",
     "token-usage",
-    "git-worktree"
+    "git-worktree",
+    "llm-as-judge",
+    "evals",
+    "developer-tools"
   ],
   "license": "MIT",
   "devDependencies": {
@@ -30,12 +35,25 @@
     "node": ">=20"
   },
   "files": [
-    "dist/src"
+    "dist/src",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
   ],
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0",
     "marked": "^18.1.2",
     "nodemailer": "^10.3.1",
     "zod": "^4.6.7"
-  }
+  },
+  "author": "Cyrus Gold",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cgold9820-dotcom/agent-fleet.git"
+  },
+  "homepage": "https://github.com/cgold9820-dotcom/agent-fleet#readme",
+  "bugs": {
+    "url": "https://github.com/cgold9820-dotcom/agent-fleet/issues"
+  },
+  "types": "dist/src/index.d.ts"
 }

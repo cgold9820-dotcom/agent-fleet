@@ -19,7 +19,7 @@ export function smtpFromEnv(env: NodeJS.ProcessEnv = process.env): SmtpConfig {
   if (missing.length) {
     throw new Error(`Missing ${missing.join(", ")}. Set SMTP_HOST, SMTP_PORT (default 465), SMTP_USER, SMTP_PASS and optionally MAIL_FROM.`);
   }
-  const port = Number(env.SMTP_PORT ?? 465);
+  const port = Number(env.SMTP_PORT || 465);
   return {
     host: env.SMTP_HOST!,
     port,
@@ -55,7 +55,7 @@ export function smtpTransport(cfg: SmtpConfig): MailTransport {
 
 /** Plain address check; also keeps shell metacharacters out of scheduler commands. */
 export function assertEmail(addr: string): void {
-  if (!/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(addr)) throw new Error(`Not a valid email address: "${addr}"`);
+  if (!/^[A-Za-z0-9._+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(addr)) throw new Error(`Not a valid email address: "${addr}"`);
 }
 
 export async function sendReport(transport: MailTransport, opts: { from: string; to: string; date: string; markdown: string }): Promise<void> {
@@ -72,14 +72,38 @@ export async function sendReport(transport: MailTransport, opts: { from: string;
  * The command that registers a daily run with the OS scheduler. On Windows
  * this is Task Scheduler (schtasks); elsewhere a crontab line.
  */
-export function scheduleCommand(opts: { time: string; to: string; node: string; cli: string; platform?: NodeJS.Platform }): string {
+export function scheduleCommand(opts: {
+  time: string;
+  to: string;
+  node: string;
+  cli: string;
+  /** Extra path flags passed through to the nightly run, e.g. ["--claude-dir", "D:/logs"]. */
+  args?: string[];
+  platform?: NodeJS.Platform;
+}): string {
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(opts.time)) throw new Error(`--time must be HH:MM (24h), got "${opts.time}"`);
   assertEmail(opts.to);
+  const args = opts.args ?? [];
+  for (const p of [opts.node, opts.cli, ...args]) {
+    // Quotes and shell metacharacters would break out of the quoting below (cmd.exe treats \" as a plain quote).
+    if (/["'%$`&|<>^\r\n]/.test(p)) throw new Error(`Path not supported in a scheduled command: ${p}`);
+    // A trailing backslash would escape the closing quote under Windows argv rules.
+    if (/\\$/.test(p)) throw new Error(`Remove the trailing backslash from: ${p}`);
+  }
   const platform = opts.platform ?? process.platform;
+  if (platform !== "win32" && [opts.node, opts.cli, ...args].some((p) => p.includes("\\"))) {
+    throw new Error("Paths with a backslash are not supported in a crontab line");
+  }
   if (platform === "win32") {
-    const run = `\\"${opts.node}\\" \\"${opts.cli}\\" email --to ${opts.to}`;
+    const extra = args.map((a) => ` \\"${a}\\"`).join("");
+    const run = `\\"${opts.node}\\" \\"${opts.cli}\\" email --to ${opts.to}${extra}`;
+    // schtasks refuses a /TR longer than 261 characters; say so before running it.
+    if (run.replace(/\\"/g, '"').length > 261) throw new Error("The scheduled command is over the 261-character limit of Task Scheduler; use shorter paths");
     return `schtasks /Create /F /SC DAILY /ST ${opts.time} /TN agent-fleet-daily /TR "${run}"`;
   }
   const [h, m] = opts.time.split(":").map(Number);
-  return `(crontab -l 2>/dev/null; echo "${m} ${h} * * * '${opts.node}' '${opts.cli}' email --to ${opts.to}") | crontab -`;
+  const extra = args.map((a) => ` '${a}'`).join("");
+  // Replaces an earlier agent-fleet line, so re-running --install does not add a second job.
+  const line = `${m} ${h} * * * '${opts.node}' '${opts.cli}' email --to ${opts.to}${extra} # agent-fleet-daily`;
+  return `(crontab -l 2>/dev/null | grep -v '# agent-fleet-daily$'; printf '%s\\n' "${line}") | crontab -`;
 }
