@@ -1,3 +1,4 @@
 node_modules/
 dist/
 reports/
+.agent-fleet/

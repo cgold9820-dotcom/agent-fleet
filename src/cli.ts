@@ -1,10 +1,13 @@
 #!/usr/bin/env node
-import { mkdirSync, writeFileSync } from "node:fs";
+import Anthropic from "@anthropic-ai/sdk";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { parseArgs } from "node:util";
 import { costUsd, findPrice, loadPricing } from "./pricing.js";
 import { diffStats, listWorktrees, rankCandidates, renderComparison, runTests, usageFor, type Candidate } from "./compare.js";
 import { dailyStats, renderDashboard } from "./dashboard.js";
+import { decisionsPath, recordDecision, saveComparison } from "./decisions.js";
+import { DEFAULT_JUDGE_MODEL, fullDiff, judgeAttempt } from "./judge.js";
 import { agentBreakdown, buildReport, dayWindow, inWindow, localDate, renderMarkdown } from "./report.js";
 import { readClaudeUsage } from "./sources/claude.js";
 import { readCodexUsage } from "./sources/codex.js";
@@ -17,6 +20,8 @@ Usage:
   agent-fleet report [--date YYYY-MM-DD] [--out FILE] [--json] [--pricing FILE]
   agent-fleet dashboard [--days 14] [--out reports/dashboard.html] [--pricing FILE]
   agent-fleet compare <worktree>... | --worktrees-of <repo>  [--base main] [--test CMD] [--days 30]
+                      [--judge --brief "what the task asked for" [--model ID]]
+  agent-fleet pick <branch> [--note "why"]
 
 Options:
   --date      Day to report on, local time (default: today)
@@ -24,6 +29,10 @@ Options:
   --base      Branch the compared worktrees started from (default: main)
   --test      Command run in each worktree; exit code 0 counts as passing
   --worktrees-of  Compare every linked worktree of this repo
+  --judge     Have Claude score each attempt's diff against --brief (needs ANTHROPIC_API_KEY)
+  --brief     The task description the attempts were given (or --brief-file FILE)
+  --model     Judge model (default: ${DEFAULT_JUDGE_MODEL})
+  --note      Why you picked this candidate (stored with the decision)
   --out       Write the report to FILE instead of stdout
   --json      Emit JSON instead of Markdown
   --pricing   JSON file of per-model prices (USD per 1M tokens) to override defaults
@@ -41,6 +50,11 @@ async function main() {
       base: { type: "string", default: "main" },
       test: { type: "string" },
       "worktrees-of": { type: "string" },
+      judge: { type: "boolean", default: false },
+      brief: { type: "string" },
+      "brief-file": { type: "string" },
+      model: { type: "string" },
+      note: { type: "string" },
       out: { type: "string" },
       json: { type: "boolean", default: false },
       pricing: { type: "string" },
@@ -52,6 +66,14 @@ async function main() {
   const cmd = positionals[0];
   if (values.help || !cmd) {
     console.log(HELP);
+    return;
+  }
+  if (cmd === "pick") {
+    const chosen = positionals[1];
+    if (!chosen) throw new Error("Usage: agent-fleet pick <branch> [--note \"why\"]");
+    const d = recordDecision(process.cwd(), chosen, values.note);
+    console.log(`Picked ${d.chosen}${d.agreedWithRanking ? " (matches the top-ranked candidate)" : " (differs from the top-ranked candidate)"}.`);
+    console.log(`Recorded in ${decisionsPath(process.cwd())}`);
     return;
   }
   if (!["report", "dashboard", "compare"].includes(cmd)) throw new Error(`Unknown command: ${cmd}\n\n${HELP}`);
@@ -83,19 +105,30 @@ async function main() {
   if (cmd === "compare") {
     const paths = values["worktrees-of"] ? listWorktrees(values["worktrees-of"]) : positionals.slice(1);
     if (paths.length < 2) throw new Error("compare needs at least two worktrees (pass paths or --worktrees-of <repo>)");
+    const brief = values["brief-file"] ? readFileSync(values["brief-file"], "utf8") : values.brief;
+    if (values.judge && !brief) throw new Error("--judge needs --brief or --brief-file: the judge scores attempts against the task.");
     const { from, to } = lastDays(30);
     const tasks = summarizeTasks(await load(from, to), gitResolver(), prices);
-    const candidates: Candidate[] = paths.map((p) => {
+    const client = values.judge ? new Anthropic() : undefined;
+    const candidates: Candidate[] = [];
+    for (const p of paths) {
       const worktree = gitResolver()(p).worktree;
       console.error(`Checking ${worktree}${values.test ? ` (running: ${values.test})` : ""}`);
-      return {
+      const c: Candidate = {
         worktree,
         ...diffStats(p, values.base!),
         ...(values.test ? { test: runTests(p, values.test) } : {}),
         ...usageFor(worktree, tasks),
       };
-    });
+      if (client && brief) {
+        console.error(`Judging ${c.branch} with ${values.model ?? DEFAULT_JUDGE_MODEL}`);
+        const testSummary = c.test ? (c.test.passed ? "passed" : `failed (exit ${c.test.exitCode}):\n${c.test.tail}`) : undefined;
+        c.judge = await judgeAttempt(client, { brief, branch: c.branch, diff: fullDiff(p, values.base!), testSummary, model: values.model });
+      }
+      candidates.push(c);
+    }
     const ranked = rankCandidates(candidates);
+    saveComparison(process.cwd(), { comparedAt: new Date().toISOString(), base: values.base!, brief, test: values.test, candidates: ranked });
     text = values.json ? JSON.stringify({ base: values.base, test: values.test, candidates: ranked }, null, 2) : renderComparison(values.base!, ranked, values.test);
   } else if (cmd === "dashboard") {
     const { days, from, to } = lastDays(14);

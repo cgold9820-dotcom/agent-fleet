@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, realpathSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -137,6 +137,10 @@ test("compare: diff stats, tests and token usage per worktree, ranked", async ()
   const sb = diffStats(b, "main");
   assert.deepEqual([sb.commits, sb.filesChanged, sb.insertions], [0, 3, 5]);
   assert.throws(() => diffStats(a, "no-such-branch"), /no-such-branch/);
+  const { fullDiff } = await import("../src/judge.js");
+  const fd = fullDiff(b, "main");
+  assert.match(fd, /\+echo boom/);
+  assert.match(fd, /\+\+\+ b\/notes\.md\n\+a/);
 
   const ta = runTests(a, "sh check.sh");
   const tb = runTests(b, "sh check.sh");
@@ -157,4 +161,57 @@ test("compare: diff stats, tests and token usage per worktree, ranked", async ()
   assert.deepEqual(ranked.map((c) => c.branch), ["feat/v1", "feat/v2"]);
   const md = renderComparison("main", ranked, "sh check.sh");
   assert.match(md, /FAIL \(exit 3\)/);
+});
+
+test("judge: scores via structured output, skips empty or oversized diffs", async () => {
+  const { judgeAttempt, judgePrompt, MAX_DIFF_CHARS } = await import("../src/judge.js");
+  const score = { correctness: 5, scope: 4, quality: 4, tests: 3, overall: 8, summary: "Solves it.", risks: ["check x.ts"] };
+  const calls: any[] = [];
+  const fake = {
+    messages: {
+      parse: async (req: any) => {
+        calls.push(req);
+        return { stop_reason: "end_turn", parsed_output: score } as any;
+      },
+    },
+  };
+  const r = await judgeAttempt(fake as any, { brief: "add login", branch: "feat/a", diff: "+x", testSummary: "passed" });
+  assert.equal(r.status, "scored");
+  assert.equal(r.status === "scored" && r.score.overall, 8);
+  assert.equal(calls[0].model, "claude-opus-5-5");
+  assert.ok(calls[0].output_config.format, "uses structured output");
+  assert.match(calls[0].messages[0].content, /<brief>\nadd login/);
+
+  assert.deepEqual(await judgeAttempt(fake as any, { brief: "b", branch: "x", diff: "  " }), { status: "skipped", reason: "no changes" });
+  const big = await judgeAttempt(fake as any, { brief: "b", branch: "x", diff: "x".repeat(MAX_DIFF_CHARS + 1) });
+  assert.equal(big.status, "skipped");
+  assert.equal(calls.length, 1, "skipped attempts make no API call");
+
+  const refused = { messages: { parse: async () => ({ stop_reason: "refusal", parsed_output: null }) as any } };
+  assert.equal((await judgeAttempt(refused as any, { brief: "b", branch: "x", diff: "+y" })).status, "skipped");
+  assert.match(judgePrompt("b", "x", "d"), /<test_result>not run<\/test_result>/);
+});
+
+test("compare ranking uses judge score after tests; pick records decisions", async () => {
+  const { rankCandidates, renderComparison } = await import("../src/compare.js");
+  const { recordDecision, saveComparison, decisionsPath } = await import("../src/decisions.js");
+  const base = { worktree: "/w", commits: 1, filesChanged: 1, insertions: 1, deletions: 0, agents: [], tokens: 0, calls: 0, costUsd: 1 };
+  const pass = { passed: true, exitCode: 0, durationMs: 1, tail: "" };
+  const scored = (overall: number) => ({ status: "scored" as const, model: "m", score: { correctness: 3, scope: 3, quality: 3, tests: 3, overall, summary: "s", risks: [] } });
+  const ranked = rankCandidates([
+    { ...base, branch: "low", test: pass, judge: scored(4), costUsd: 0.5 },
+    { ...base, branch: "high", test: pass, judge: scored(9) },
+    { ...base, branch: "failing", test: { ...pass, passed: false, exitCode: 1 }, judge: scored(10) },
+  ]);
+  assert.deepEqual(ranked.map((c) => c.branch), ["high", "low", "failing"]);
+  assert.match(renderComparison("main", ranked), /\| 9\/10 \|/);
+
+  const dir = mkdtempSync(join(tmpdir(), "fleet-pick-"));
+  assert.throws(() => recordDecision(dir, "high"), /Run `agent-fleet compare` first/);
+  saveComparison(dir, { comparedAt: "t", base: "main", candidates: ranked });
+  assert.throws(() => recordDecision(dir, "nope"), /Candidates: high, low, failing/);
+  assert.equal(recordDecision(dir, "low", "simpler").agreedWithRanking, false);
+  assert.equal(recordDecision(dir, "high").agreedWithRanking, true);
+  const lines = readFileSync(decisionsPath(dir), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+  assert.deepEqual(lines.map((d) => [d.chosen, d.note]), [["low", "simpler"], ["high", undefined]]);
 });
