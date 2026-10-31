@@ -85,7 +85,10 @@ export function scheduleCommand(opts: {
   assertEmail(opts.to);
   const args = opts.args ?? [];
   for (const p of [opts.node, opts.cli, ...args]) {
-    if (/["'%$`\r\n]/.test(p)) throw new Error(`Path not supported in a scheduled command: ${p}`);
+    // Quotes and shell metacharacters would break out of the quoting below (cmd.exe treats \" as a plain quote).
+    if (/["'%$`&|<>^\r\n]/.test(p)) throw new Error(`Path not supported in a scheduled command: ${p}`);
+    // A trailing backslash would escape the closing quote under Windows argv rules.
+    if (/\\$/.test(p)) throw new Error(`Remove the trailing backslash from: ${p}`);
   }
   const platform = opts.platform ?? process.platform;
   if (platform === "win32") {

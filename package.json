@@ -1,5 +1,5 @@
 {
-  "name": "agent-fleet",
+  "name": "agent-fleet-cli",
   "version": "0.4.0",
   "description": "Manage parallel coding agents like a team: per-task token and cost accounting for Claude Code and Codex mapped to git worktrees (Orca-aware), side-by-side comparison with LLM-as-judge scoring, dashboards and daily email reports.",
   "main": "dist/src/index.js",
@@ -7,7 +7,8 @@
     "build": "tsc -p .",
     "test": "npm run build && node --test dist/test/fleet.test.js",
     "start": "node dist/src/cli.js",
-    "prepublishOnly": "npm test"
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "prepublishOnly": "npm run clean && npm test"
   },
   "keywords": [
     "ai-agents",

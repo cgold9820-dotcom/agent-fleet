@@ -2,7 +2,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { execSync } from "node:child_process";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { costUsd, findPrice, loadPricing } from "./pricing.js";
@@ -94,7 +94,7 @@ async function main() {
   }
   if (cmd === "schedule") {
     if (!values.to) throw new Error("schedule needs --to ADDRESS");
-    const args = (["claude-dir", "codex-dir", "orca-db"] as const).flatMap((k) => (values[k] ? [`--${k}`, values[k]!] : []));
+    const args = (["claude-dir", "codex-dir", "orca-db"] as const).flatMap((k) => (values[k] ? [`--${k}`, resolve(values[k]!)] : []));
     const command = scheduleCommand({ time: values.time!, to: values.to, node: process.execPath, cli: fileURLToPath(import.meta.url), args });
     if (values.install) {
       execSync(command, { stdio: "inherit" });

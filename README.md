@@ -73,7 +73,7 @@ node dist/src/cli.js schedule --to you@gmail.com --time 21:00 --install
 `schedule` without `--install` only prints the Task Scheduler (or crontab) command so you can check it first.
 `--claude-dir`, `--codex-dir` and `--orca-db` are carried into the scheduled run. On macOS/Linux, cron does not load your shell profile,
 so put the `SMTP_*` lines at the top of `crontab -e`. Schedule from a cloned or globally installed copy, not `npx`,
-because the task points at the CLI file on disk.
+because the task points at the CLI file on disk. Windows limits the task command to 261 characters, and paths with &, |, quotes or a trailing backslash are refused.
 
 ## How it works
 
@@ -103,8 +103,10 @@ See [docs/ROADMAP.md](docs/ROADMAP.md): Cursor support, weekly trends, a live `s
 
 ## Use as a library
 
+The npm package is `agent-fleet-cli` (the plain `agent-fleet` name belongs to an unrelated project); the command it installs is `agent-fleet`.
+
 ```ts
-import { readClaudeUsage, summarizeTasks, gitResolver } from "agent-fleet";
+import { readClaudeUsage, summarizeTasks, gitResolver } from "agent-fleet-cli";
 
 const tasks = summarizeTasks(await readClaudeUsage(), gitResolver());
 ```

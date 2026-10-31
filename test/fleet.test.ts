@@ -292,5 +292,10 @@ test("email: env config, HTML rendering, sending and scheduler commands", async 
   const withDirs = scheduleCommand({ time: "21:00", to: "me@x.com", node: "/n", cli: "/c", args: ["--claude-dir", "/logs"], platform: "linux" });
   assert.match(withDirs, /email --to me@x\.com '--claude-dir' '\/logs'"/);
   assert.throws(() => scheduleCommand({ time: "21:00", to: "me@x.com", node: "/n", cli: "/it's", platform: "linux" }), /not supported/);
+  const winArgs = scheduleCommand({ time: "21:00", to: "me@x.com", node: "C:\\node.exe", cli: "C:\\af\\cli.js", args: ["--claude-dir", "D:\\logs"], platform: "win32" });
+  assert.ok(winArgs.endsWith('email --to me@x.com \\"--claude-dir\\" \\"D:\\logs\\""'), winArgs);
+  for (const bad of ["D:\\R&D\\logs", "D:\\logs\\", "x|y", "a^b"]) {
+    assert.throws(() => scheduleCommand({ time: "21:00", to: "me@x.com", node: "n", cli: "c", args: ["--claude-dir", bad], platform: "win32" }));
+  }
   assert.equal(smtpFromEnv({ SMTP_HOST: "h", SMTP_USER: "u", SMTP_PASS: "p", SMTP_PORT: "" }).port, 465);
 });
