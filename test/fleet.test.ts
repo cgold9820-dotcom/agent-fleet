@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -76,7 +76,8 @@ test("dayWindow rejects bad dates", () => {
 });
 
 test("gitResolver maps a linked worktree back to its repo", () => {
-  const root = mkdtempSync(join(tmpdir(), "fleet-"));
+  // realpath expands Windows 8.3 short names (RUNNER~1) the way git reports paths.
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), "fleet-")));
   const repo = join(root, "wishlist");
   const git = (...args: string[]) => execFileSync("git", args, { stdio: "ignore" });
   git("init", "-q", "-b", "main", repo);
@@ -112,7 +113,7 @@ test("compare: diff stats, tests and token usage per worktree, ranked", async ()
   const { diffStats, listWorktrees, parseShortstat, rankCandidates, renderComparison, runTests, usageFor } = await import("../src/compare.js");
   assert.deepEqual(parseShortstat(" 1 file changed, 2 insertions(+)"), { filesChanged: 1, insertions: 2, deletions: 0 });
 
-  const root = mkdtempSync(join(tmpdir(), "fleet-cmp-"));
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), "fleet-cmp-")));
   const repo = join(root, "app");
   const git = (...args: string[]) => execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...args], { stdio: "ignore" });
   git("init", "-q", "-b", "main", repo);
