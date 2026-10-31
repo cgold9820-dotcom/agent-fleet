@@ -10,6 +10,7 @@ and turns that into per-task token and cost accounting plus a daily report.
 - **Per-task accounting.** One task = one worktree + branch. Tokens (input, output, cache read/write) and estimated cost per task.
 - **Multi-agent.** Claude Code and Codex today, normalized into one event model.
 - **Dashboard.** A self-contained HTML page: cost per day by agent, and every task in the period.
+- **Compare approaches.** Several worktrees attacking the same task, side by side: tests, diff size, tokens and cost, ranked so you can pick the winner.
 - **Daily report.** Markdown or JSON: totals, per-agent split, per-task table, and the commits each task produced that day.
 - **Local and private.** Reads files on your machine; nothing is uploaded.
 
@@ -22,6 +23,7 @@ node dist/src/cli.js report                       # today, to stdout
 node dist/src/cli.js report --date 2026-10-30 --out reports/2026-10-30.md
 node dist/src/cli.js report --json                 # machine-readable
 node dist/src/cli.js dashboard --days 14           # writes reports/dashboard.html
+node dist/src/cli.js compare --worktrees-of ~/orca/projects/My-Book --test "npm test"
 ```
 
 ![Dashboard](docs/dashboard.png)
@@ -50,7 +52,7 @@ Log locations respect `CLAUDE_CONFIG_DIR` and `CODEX_HOME`, or pass `--claude-di
 
 ## Roadmap
 
-See [docs/ROADMAP.md](docs/ROADMAP.md): Orca workspace names, multi-approach comparison with automated evals, scheduled email digests.
+See [docs/ROADMAP.md](docs/ROADMAP.md): Orca workspace names, LLM-as-judge review, scheduled email digests.
 
 ## Development
 
