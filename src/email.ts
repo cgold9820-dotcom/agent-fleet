@@ -19,7 +19,7 @@ export function smtpFromEnv(env: NodeJS.ProcessEnv = process.env): SmtpConfig {
   if (missing.length) {
     throw new Error(`Missing ${missing.join(", ")}. Set SMTP_HOST, SMTP_PORT (default 465), SMTP_USER, SMTP_PASS and optionally MAIL_FROM.`);
   }
-  const port = Number(env.SMTP_PORT ?? 465);
+  const port = Number(env.SMTP_PORT || 465);
   return {
     host: env.SMTP_HOST!,
     port,
@@ -72,14 +72,28 @@ export async function sendReport(transport: MailTransport, opts: { from: string;
  * The command that registers a daily run with the OS scheduler. On Windows
  * this is Task Scheduler (schtasks); elsewhere a crontab line.
  */
-export function scheduleCommand(opts: { time: string; to: string; node: string; cli: string; platform?: NodeJS.Platform }): string {
+export function scheduleCommand(opts: {
+  time: string;
+  to: string;
+  node: string;
+  cli: string;
+  /** Extra path flags passed through to the nightly run, e.g. ["--claude-dir", "D:/logs"]. */
+  args?: string[];
+  platform?: NodeJS.Platform;
+}): string {
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(opts.time)) throw new Error(`--time must be HH:MM (24h), got "${opts.time}"`);
   assertEmail(opts.to);
+  const args = opts.args ?? [];
+  for (const p of [opts.node, opts.cli, ...args]) {
+    if (/["'%$`\r\n]/.test(p)) throw new Error(`Path not supported in a scheduled command: ${p}`);
+  }
   const platform = opts.platform ?? process.platform;
   if (platform === "win32") {
-    const run = `\\"${opts.node}\\" \\"${opts.cli}\\" email --to ${opts.to}`;
+    const extra = args.map((a) => ` \\"${a}\\"`).join("");
+    const run = `\\"${opts.node}\\" \\"${opts.cli}\\" email --to ${opts.to}${extra}`;
     return `schtasks /Create /F /SC DAILY /ST ${opts.time} /TN agent-fleet-daily /TR "${run}"`;
   }
   const [h, m] = opts.time.split(":").map(Number);
-  return `(crontab -l 2>/dev/null; echo "${m} ${h} * * * '${opts.node}' '${opts.cli}' email --to ${opts.to}") | crontab -`;
+  const extra = args.map((a) => ` '${a}'`).join("");
+  return `(crontab -l 2>/dev/null; echo "${m} ${h} * * * '${opts.node}' '${opts.cli}' email --to ${opts.to}${extra}") | crontab -`;
 }

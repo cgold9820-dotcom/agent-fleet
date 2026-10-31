@@ -94,10 +94,16 @@ async function main() {
   }
   if (cmd === "schedule") {
     if (!values.to) throw new Error("schedule needs --to ADDRESS");
-    const command = scheduleCommand({ time: values.time!, to: values.to, node: process.execPath, cli: fileURLToPath(import.meta.url) });
+    const args = (["claude-dir", "codex-dir", "orca-db"] as const).flatMap((k) => (values[k] ? [`--${k}`, values[k]!] : []));
+    const command = scheduleCommand({ time: values.time!, to: values.to, node: process.execPath, cli: fileURLToPath(import.meta.url), args });
     if (values.install) {
       execSync(command, { stdio: "inherit" });
-      console.log(`Scheduled a daily report to ${values.to} at ${values.time}. SMTP_* variables must be set for that user (on Windows: setx SMTP_HOST ...).`);
+      console.log(`Scheduled a daily report to ${values.to} at ${values.time}.`);
+      console.log(
+        process.platform === "win32"
+          ? "Set SMTP_* with setx, then sign out and back in so Task Scheduler sees them."
+          : "cron does not load your shell profile: put SMTP_* lines at the top of `crontab -e`.",
+      );
     } else {
       console.log(command);
       console.log("\nRun the line above, or re-run with --install.");

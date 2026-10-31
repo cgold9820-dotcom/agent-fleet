@@ -60,7 +60,7 @@ SMTP settings come from environment variables, so passwords stay out of command 
 | `MAIL_FROM` | `you@gmail.com` | optional, defaults to `SMTP_USER` |
 
 ```powershell
-# Windows: store the variables for your user (new terminals and scheduled tasks pick them up)
+# Windows: store the variables for your user, then sign out and back in so Task Scheduler sees them
 setx SMTP_HOST smtp.gmail.com
 setx SMTP_USER you@gmail.com
 setx SMTP_PASS "your-app-password"
@@ -71,6 +71,9 @@ node dist/src/cli.js schedule --to you@gmail.com --time 21:00 --install
 ```
 
 `schedule` without `--install` only prints the Task Scheduler (or crontab) command so you can check it first.
+`--claude-dir`, `--codex-dir` and `--orca-db` are carried into the scheduled run. On macOS/Linux, cron does not load your shell profile,
+so put the `SMTP_*` lines at the top of `crontab -e`. Schedule from a cloned or globally installed copy, not `npx`,
+because the task points at the CLI file on disk.
 
 ## How it works
 
@@ -96,7 +99,7 @@ Log locations respect `CLAUDE_CONFIG_DIR` and `CODEX_HOME`, or pass `--claude-di
 
 ## Roadmap
 
-See [docs/ROADMAP.md](docs/ROADMAP.md): Cursor support, scheduled email digests.
+See [docs/ROADMAP.md](docs/ROADMAP.md): Cursor support, weekly trends, a live `serve` mode.
 
 ## Use as a library
 

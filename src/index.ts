@@ -9,4 +9,5 @@ export { renderDashboard, dailyStats } from "./dashboard.js";
 export { diffStats, runTests, rankCandidates, renderComparison, type Candidate } from "./compare.js";
 export { judgeAttempt, JudgeScoreSchema, type JudgeResult, type JudgeScore } from "./judge.js";
 export { recordDecision, type Decision } from "./decisions.js";
+export { smtpFromEnv, smtpTransport, sendReport, reportToHtml, scheduleCommand, type SmtpConfig, type MailTransport } from "./email.js";
 export type { UsageEvent, TaskSummary, AgentName } from "./types.js";

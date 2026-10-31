@@ -289,4 +289,8 @@ test("email: env config, HTML rendering, sending and scheduler commands", async 
   assert.match(scheduleCommand({ time: "07:05", to: "me@x.com", node: "/n", cli: "/c", platform: "linux" }), /echo "5 7 \* \* \* '\/n' '\/c' email --to me@x\.com"/);
   assert.throws(() => scheduleCommand({ time: "25:00", to: "me@x.com", node: "n", cli: "c" }), /HH:MM/);
   assert.throws(() => assertEmail("me@x.com & calc.exe"), /Not a valid email/);
+  const withDirs = scheduleCommand({ time: "21:00", to: "me@x.com", node: "/n", cli: "/c", args: ["--claude-dir", "/logs"], platform: "linux" });
+  assert.match(withDirs, /email --to me@x\.com '--claude-dir' '\/logs'"/);
+  assert.throws(() => scheduleCommand({ time: "21:00", to: "me@x.com", node: "/n", cli: "/it's", platform: "linux" }), /not supported/);
+  assert.equal(smtpFromEnv({ SMTP_HOST: "h", SMTP_USER: "u", SMTP_PASS: "p", SMTP_PORT: "" }).port, 465);
 });
