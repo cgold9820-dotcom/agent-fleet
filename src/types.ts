@@ -31,6 +31,8 @@ export interface TaskSummary extends TokenTotals {
   repo: string;
   worktree: string;
   branch: string;
+  /** Workspace name from Orca, when the worktree is an Orca workspace. */
+  name?: string;
   agents: AgentName[];
   models: string[];
   sessions: number;

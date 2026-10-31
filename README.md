@@ -9,6 +9,7 @@ and turns that into per-task token and cost accounting plus a daily report.
 
 - **Per-task accounting.** One task = one worktree + branch. Tokens (input, output, cache read/write) and estimated cost per task.
 - **Multi-agent.** Claude Code and Codex today, normalized into one event model.
+- **Orca-aware.** If [Orca](https://github.com/stablyai/orca) is installed, tasks are labeled with their workspace names (read-only, from Orca's profile database; needs Node 22.5+).
 - **Dashboard.** A self-contained HTML page: cost per day by agent, and every task in the period.
 - **Compare approaches.** Several worktrees attacking the same task, side by side: tests, diff size, tokens and cost, ranked so you can pick the winner.
 - **LLM-as-judge.** Optionally, Claude scores each attempt's diff against the task brief (correctness, scope, quality, tests) with structured output.
@@ -62,11 +63,11 @@ Subscription plans bill differently, so treat the number as a comparison metric.
 { "my-custom-model": { "input": 1, "output": 4, "cacheRead": 0.1, "cacheWrite": 0 } }
 ```
 
-Log locations respect `CLAUDE_CONFIG_DIR` and `CODEX_HOME`, or pass `--claude-dir` / `--codex-dir`.
+Log locations respect `CLAUDE_CONFIG_DIR` and `CODEX_HOME`, or pass `--claude-dir` / `--codex-dir`. Orca's database is found at its standard location per OS; override with `--orca-db` or `ORCA_PROFILE_DB`.
 
 ## Roadmap
 
-See [docs/ROADMAP.md](docs/ROADMAP.md): Orca workspace names, scheduled email digests.
+See [docs/ROADMAP.md](docs/ROADMAP.md): Cursor support, scheduled email digests.
 
 ## Development
 

@@ -11,7 +11,8 @@ import { DEFAULT_JUDGE_MODEL, fullDiff, judgeAttempt } from "./judge.js";
 import { agentBreakdown, buildReport, dayWindow, inWindow, localDate, renderMarkdown } from "./report.js";
 import { readClaudeUsage } from "./sources/claude.js";
 import { readCodexUsage } from "./sources/codex.js";
-import { commitsBetween, gitResolver, summarizeTasks } from "./tasks.js";
+import { readOrcaWorkspaces } from "./sources/orca.js";
+import { attachNames, commitsBetween, gitResolver, pathKey, summarizeTasks } from "./tasks.js";
 import type { UsageEvent } from "./types.js";
 
 const HELP = `agent-fleet: token & cost accounting for parallel coding agents
@@ -37,6 +38,7 @@ Options:
   --json      Emit JSON instead of Markdown
   --pricing   JSON file of per-model prices (USD per 1M tokens) to override defaults
   --claude-dir, --codex-dir   Override log locations
+  --orca-db   Orca profile database for workspace names (default: Orca's standard location)
 
 Reads Claude Code (~/.claude/projects) and Codex (~/.codex/sessions) logs locally.
 Nothing leaves your machine.`;
@@ -60,6 +62,7 @@ async function main() {
       pricing: { type: "string" },
       "claude-dir": { type: "string" },
       "codex-dir": { type: "string" },
+      "orca-db": { type: "string" },
       help: { type: "boolean", short: "h", default: false },
     },
   });
@@ -110,12 +113,14 @@ async function main() {
     const { from, to } = lastDays(30);
     const tasks = summarizeTasks(await load(from, to), gitResolver(), prices);
     const client = values.judge ? new Anthropic() : undefined;
+    const orcaNames = new Map([...readOrcaWorkspaces(values["orca-db"])].map(([p, w]) => [pathKey(p), w]));
     const candidates: Candidate[] = [];
     for (const p of paths) {
       const worktree = gitResolver()(p).worktree;
       console.error(`Checking ${worktree}${values.test ? ` (running: ${values.test})` : ""}`);
       const c: Candidate = {
         worktree,
+        name: orcaNames.get(pathKey(worktree))?.name,
         ...diffStats(p, values.base!),
         ...(values.test ? { test: runTests(p, values.test) } : {}),
         ...usageFor(worktree, tasks),
@@ -134,6 +139,7 @@ async function main() {
     const { days, from, to } = lastDays(14);
     const events = await load(from, to);
     const tasks = summarizeTasks(events, gitResolver(), prices);
+    attachNames(tasks, readOrcaWorkspaces(values["orca-db"]));
     text = renderDashboard({ from: localDate(from), to: localDate(), days: dailyStats(events, from, days, costOf), tasks });
     values.out ??= "reports/dashboard.html";
   } else {
@@ -142,6 +148,7 @@ async function main() {
     const events = await load(from, to);
     const tasks = summarizeTasks(events, gitResolver(), prices);
     for (const t of tasks) t.commits = commitsBetween(t.worktree, from, to);
+    attachNames(tasks, readOrcaWorkspaces(values["orca-db"]));
     const report = buildReport(date, tasks, agentBreakdown(events, costOf));
     text = values.json ? JSON.stringify(report, null, 2) : renderMarkdown(report);
   }

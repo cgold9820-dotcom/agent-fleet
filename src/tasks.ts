@@ -121,3 +121,18 @@ export function commitsBetween(worktree: string, from: Date, to: Date): string[]
     return [];
   }
 }
+
+/** Attach Orca workspace names (or any path-keyed names) to tasks. */
+export function attachNames(tasks: TaskSummary[], names: Map<string, { name: string }>): void {
+  const lookup = new Map([...names].map(([path, n]) => [pathKey(path), n]));
+  for (const t of tasks) {
+    const n = lookup.get(pathKey(t.worktree));
+    if (n) t.name = n.name;
+  }
+}
+
+/** Windows paths compare case-insensitively; POSIX paths do not. */
+export function pathKey(p: string): string {
+  const n = normalizePath(p);
+  return /^[a-z]:/.test(n) ? n.toLowerCase() : n;
+}

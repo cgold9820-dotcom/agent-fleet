@@ -165,6 +165,36 @@ test("compare: diff stats, tests and token usage per worktree, ranked", async ()
   assert.match(md, /FAIL \(exit 3\)/);
 });
 
+test("orca: reads workspace names from the profile database", async () => {
+  const { parseWorktreeMeta, readOrcaWorkspaces } = await import("../src/sources/orca.js");
+  const payload = JSON.stringify({
+    "repo1::E:\\wishlist-ws\\login": { displayName: "Login page", comment: "try OAuth", createdWithAgent: "claude" },
+    "repo1::/home/u/ws/x": { displayName: "", comment: "" },
+  });
+  const names = parseWorktreeMeta(payload);
+  assert.deepEqual(names.get("e:/wishlist-ws/login"), { name: "Login page", comment: "try OAuth", agent: "claude" });
+  assert.equal(names.size, 1, "entries without a display name are ignored");
+  const { attachNames } = await import("../src/tasks.js");
+  const t = [{ worktree: "e:/Wishlist-WS/Login" }] as any[];
+  attachNames(t, names);
+  assert.equal(t[0].name, "Login page", "Windows paths match case-insensitively");
+
+  assert.equal(readOrcaWorkspaces(join(tmpdir(), "no-such-orca.db")).size, 0);
+
+  let sqlite: any;
+  try {
+    sqlite = await import("node:sqlite");
+  } catch {
+    return; // Node 20 has no built-in SQLite; the reader returns an empty map there.
+  }
+  const db = join(mkdtempSync(join(tmpdir(), "fleet-orca-")), "profile-state.db");
+  const w = new sqlite.DatabaseSync(db);
+  w.exec("CREATE TABLE profile_state_documents (domain TEXT PRIMARY KEY NOT NULL, payload TEXT NOT NULL, domain_version INTEGER NOT NULL, revision INTEGER NOT NULL, updated_at INTEGER NOT NULL, content_hash TEXT NOT NULL)");
+  w.prepare("INSERT INTO profile_state_documents VALUES (?, ?, 1, 1, 0, 'h')").run("worktreeMeta", payload);
+  w.close();
+  assert.equal(readOrcaWorkspaces(db).get("e:/wishlist-ws/login")?.name, "Login page");
+});
+
 test("judge: scores via structured output, skips empty or oversized diffs", async () => {
   const { judgeAttempt, judgePrompt, MAX_DIFF_CHARS } = await import("../src/judge.js");
   const score = { correctness: 5, scope: 4, quality: 4, tests: 0, overall: 8, summary: "Solves it.", risks: ["check x.ts"] };
@@ -211,6 +241,19 @@ test("compare ranking uses judge score after tests; pick records decisions", asy
     { ...base, branch: "failing", test: { ...pass, passed: false, exitCode: 1 }, judge: scored(10) },
   ]);
   assert.deepEqual(ranked.map((c) => c.branch), ["high", "low", "failing"]);
+  const skipped = { status: "skipped" as const, reason: "529" };
+  const withSkip = rankCandidates([
+    { ...base, branch: "scored-low", test: pass, judge: scored(1), costUsd: 2 },
+    { ...base, branch: "unjudged-cheap", test: pass, judge: skipped, costUsd: 0.1 },
+  ]);
+  assert.deepEqual(withSkip.map((c) => c.branch), ["unjudged-cheap", "scored-low"], "a failed review does not count as a zero");
+  // Mixed scored/skipped sets must still sort the same whatever the input order.
+  const A = { ...base, branch: "A", test: pass, judge: scored(9), costUsd: 3 };
+  const B = { ...base, branch: "B", test: pass, judge: skipped, costUsd: 2 };
+  const C = { ...base, branch: "C", test: pass, judge: scored(1), costUsd: 1 };
+  for (const order of [[A, B, C], [B, A, C], [B, C, A], [C, A, B]]) {
+    assert.deepEqual(rankCandidates(order).map((c) => c.branch), ["C", "B", "A"]);
+  }
   assert.match(renderComparison("main", ranked), /\| 9\/10 \|/);
 
   const dir = mkdtempSync(join(tmpdir(), "fleet-pick-"));
