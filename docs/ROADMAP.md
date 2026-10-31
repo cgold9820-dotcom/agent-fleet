@@ -19,8 +19,8 @@ in parallel, let evals and a human pick the winner, and know what every task cos
 ## v0.3: compare approaches
 - [x] `agent-fleet compare`: for sibling worktrees attempting the same task, collect tests passed,
       diff size (including uncommitted and untracked work), tokens and cost side by side, ranked
-- [ ] Optional LLM-as-judge review of each diff against the task brief, with a rubric
-- [ ] Record the human's pick to build a dataset of "which approach won and why"
+- [x] Optional LLM-as-judge review of each diff against the task brief, with a rubric and structured output
+- [x] `agent-fleet pick` records the human's choice to build a dataset of "which approach won and why"
 
 ## v0.4: delivery
 - [ ] Scheduled daily digest by email (SMTP) and a static HTML report

@@ -2,6 +2,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { normalizePath } from "./tasks.js";
+import type { JudgeResult } from "./judge.js";
 import type { AgentName, TaskSummary } from "./types.js";
 import { totalTokens } from "./types.js";
 
@@ -22,6 +23,7 @@ export interface Candidate {
   insertions: number;
   deletions: number;
   test?: TestResult;
+  judge?: JudgeResult;
   agents: AgentName[];
   tokens: number;
   costUsd: number;
@@ -69,7 +71,7 @@ export function diffStats(worktree: string, base: string) {
   }
   const commits = Number(git(worktree, "rev-list", "--count", `${mergeBase}..HEAD`));
   const stats = parseShortstat(git(worktree, "diff", "--shortstat", mergeBase));
-  const untracked = git(worktree, "ls-files", "--others", "--exclude-standard").split(/\r?\n/).filter(Boolean);
+  const untracked = git(worktree, "ls-files", "-z", "--others", "--exclude-standard").split("\0").filter(Boolean);
   for (const file of untracked) {
     stats.filesChanged++;
     try {
@@ -106,12 +108,14 @@ export function usageFor(worktree: string, tasks: TaskSummary[]) {
   };
 }
 
-/** Passing tests first, then cheaper, then smaller diffs. */
+/** Passing tests first, then higher judge score, then cheaper, then smaller diffs. */
 export function rankCandidates(cs: Candidate[]): Candidate[] {
   const testScore = (c: Candidate) => (c.test === undefined ? 1 : c.test.passed ? 0 : 2);
+  const judged = (c: Candidate) => (c.judge?.status === "scored" ? c.judge.score.overall : 0);
   return [...cs].sort(
     (a, b) =>
       testScore(a) - testScore(b) ||
+      judged(b) - judged(a) ||
       a.costUsd - b.costUsd ||
       a.insertions + a.deletions - (b.insertions + b.deletions),
   );
@@ -123,23 +127,46 @@ const tok = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `
 export function renderComparison(base: string, ranked: Candidate[], testCommand?: string): string {
   const lines = [`# Compare approaches (base: \`${base}\`)`, ""];
   if (testCommand) lines.push(`Tests: \`${testCommand}\``, "");
+  const anyJudged = ranked.some((c) => c.judge);
   lines.push(
-    "| # | Branch | Tests | Agents | Tokens | Est. cost | Commits | Files | +/- |",
-    "|---:|---|---|---|---:|---:|---:|---:|---|",
+    `| # | Branch | Tests |${anyJudged ? " Judge |" : ""} Agents | Tokens | Est. cost | Commits | Files | +/- |`,
+    `|---:|---|---|${anyJudged ? "---:|" : ""}---|---:|---:|---:|---:|---|`,
   );
   ranked.forEach((c, i) => {
     const test = c.test ? (c.test.passed ? `pass (${(c.test.durationMs / 1000).toFixed(1)}s)` : `FAIL (exit ${c.test.exitCode})`) : "n/a";
     lines.push(
-      `| ${i + 1} | \`${c.branch}\` | ${test} | ${c.agents.join(", ") || "-"} | ${tok(c.tokens)} | ${usd(c.costUsd)} | ${c.commits} | ${
+      `| ${i + 1} | \`${c.branch}\` | ${test} |${anyJudged ? ` ${judgeCell(c.judge)} |` : ""} ${c.agents.join(", ") || "-"} | ${tok(c.tokens)} | ${usd(c.costUsd)} | ${c.commits} | ${
         c.filesChanged
       } | +${c.insertions}/-${c.deletions} |`,
     );
   });
   lines.push("");
+  for (const c of ranked) {
+    if (c.judge?.status === "skipped") lines.push(`- \`${c.branch}\`: judge skipped (${c.judge.reason})`, "");
+    if (c.judge?.status !== "scored") continue;
+    const s = c.judge.score;
+    lines.push(
+      `### \`${c.branch}\`: ${s.overall}/10`,
+      "",
+      `Correctness ${s.correctness}/5 · Scope ${s.scope}/5 · Quality ${s.quality}/5 · Tests ${s.tests}/5`,
+      "",
+      s.summary,
+      "",
+    );
+    if (s.risks.length) lines.push(...s.risks.map((r) => `- ${r}`), "");
+  }
   const failed = ranked.filter((c) => c.test && !c.test.passed);
   for (const c of failed) {
     lines.push(`<details><summary>${c.branch}: test output</summary>`, "", "```", c.test!.tail || "(no output)", "```", "", "</details>", "");
   }
-  lines.push("_Ranked by tests passed, then estimated cost, then diff size. You pick the winner._", "");
+  lines.push(
+    `_Ranked by tests passed, ${anyJudged ? "then judge score, " : ""}then estimated cost, then diff size. You pick the winner: \`agent-fleet pick <branch>\`._`,
+    "",
+  );
   return lines.join("\n");
+}
+
+function judgeCell(j?: JudgeResult): string {
+  if (!j) return "-";
+  return j.status === "scored" ? `${j.score.overall}/10` : `skipped`;
 }
