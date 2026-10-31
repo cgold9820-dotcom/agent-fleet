@@ -1,6 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Candidate } from "./compare.js";
+import { normalizePath } from "./tasks.js";
 
 export interface Comparison {
   comparedAt: string;
@@ -37,7 +38,7 @@ export function saveComparison(dir: string, c: Comparison): void {
 export function recordDecision(dir: string, chosen: string, note?: string): Decision {
   if (!existsSync(lastComparePath(dir))) throw new Error("No comparison found here. Run `agent-fleet compare` first.");
   const comparison = JSON.parse(readFileSync(lastComparePath(dir), "utf8")) as Comparison;
-  const match = comparison.candidates.find((c) => c.branch === chosen || c.worktree === chosen);
+  const match = comparison.candidates.find((c) => c.branch === chosen || c.worktree === normalizePath(chosen));
   if (!match) {
     throw new Error(`"${chosen}" was not in the last comparison. Candidates: ${comparison.candidates.map((c) => c.branch).join(", ")}`);
   }

@@ -71,7 +71,7 @@ export function diffStats(worktree: string, base: string) {
   }
   const commits = Number(git(worktree, "rev-list", "--count", `${mergeBase}..HEAD`));
   const stats = parseShortstat(git(worktree, "diff", "--shortstat", mergeBase));
-  const untracked = git(worktree, "ls-files", "--others", "--exclude-standard").split(/\r?\n/).filter(Boolean);
+  const untracked = git(worktree, "ls-files", "-z", "--others", "--exclude-standard").split("\0").filter(Boolean);
   for (const file of untracked) {
     stats.filesChanged++;
     try {
