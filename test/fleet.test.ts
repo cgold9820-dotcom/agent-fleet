@@ -286,11 +286,15 @@ test("email: env config, HTML rendering, sending and scheduler commands", async 
 
   const win = scheduleCommand({ time: "21:00", to: "me@x.com", node: "C:\\node.exe", cli: "C:\\af\\cli.js", platform: "win32" });
   assert.equal(win, 'schtasks /Create /F /SC DAILY /ST 21:00 /TN agent-fleet-daily /TR "\\"C:\\node.exe\\" \\"C:\\af\\cli.js\\" email --to me@x.com"');
-  assert.match(scheduleCommand({ time: "07:05", to: "me@x.com", node: "/n", cli: "/c", platform: "linux" }), /echo "5 7 \* \* \* '\/n' '\/c' email --to me@x\.com"/);
+  assert.match(scheduleCommand({ time: "07:05", to: "me@x.com", node: "/n", cli: "/c", platform: "linux" }), /printf '%s\\n' "5 7 \* \* \* '\/n' '\/c' email --to me@x\.com # agent-fleet-daily"/);
   assert.throws(() => scheduleCommand({ time: "25:00", to: "me@x.com", node: "n", cli: "c" }), /HH:MM/);
   assert.throws(() => assertEmail("me@x.com & calc.exe"), /Not a valid email/);
   const withDirs = scheduleCommand({ time: "21:00", to: "me@x.com", node: "/n", cli: "/c", args: ["--claude-dir", "/logs"], platform: "linux" });
-  assert.match(withDirs, /email --to me@x\.com '--claude-dir' '\/logs'"/);
+  assert.match(withDirs, /email --to me@x\.com '--claude-dir' '\/logs' # agent-fleet-daily"/);
+  assert.match(withDirs, /grep -v '# agent-fleet-daily\$'/);
+  assert.throws(() => scheduleCommand({ time: "21:00", to: "me@x.com", node: "/n", cli: "/c", args: ["--claude-dir", "/tmp/x\\n* * * * * touch /tmp/p #"], platform: "linux" }), /backslash/);
+  assert.throws(() => assertEmail("a%OS%b@x.com"), /Not a valid email/);
+  assert.throws(() => scheduleCommand({ time: "21:00", to: "me@x.com", node: "C:\\node.exe", cli: "C:\\" + "a".repeat(260), platform: "win32" }), /261/);
   assert.throws(() => scheduleCommand({ time: "21:00", to: "me@x.com", node: "/n", cli: "/it's", platform: "linux" }), /not supported/);
   const winArgs = scheduleCommand({ time: "21:00", to: "me@x.com", node: "C:\\node.exe", cli: "C:\\af\\cli.js", args: ["--claude-dir", "D:\\logs"], platform: "win32" });
   assert.ok(winArgs.endsWith('email --to me@x.com \\"--claude-dir\\" \\"D:\\logs\\""'), winArgs);

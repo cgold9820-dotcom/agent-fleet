@@ -73,7 +73,8 @@ node dist/src/cli.js schedule --to you@gmail.com --time 21:00 --install
 `schedule` without `--install` only prints the Task Scheduler (or crontab) command so you can check it first.
 `--claude-dir`, `--codex-dir` and `--orca-db` are carried into the scheduled run. On macOS/Linux, cron does not load your shell profile,
 so put the `SMTP_*` lines at the top of `crontab -e`. Schedule from a cloned or globally installed copy, not `npx`,
-because the task points at the CLI file on disk. Windows limits the task command to 261 characters, and paths with &, |, quotes or a trailing backslash are refused.
+because the task points at the CLI file on disk. Windows limits the task command to 261 characters. Paths containing quotes, `% $ & | < > ^` or a backtick are refused, as are
+a trailing backslash on Windows and any backslash in a crontab line. Re-running `--install` replaces the earlier schedule.
 
 ## How it works
 

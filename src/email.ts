@@ -55,7 +55,7 @@ export function smtpTransport(cfg: SmtpConfig): MailTransport {
 
 /** Plain address check; also keeps shell metacharacters out of scheduler commands. */
 export function assertEmail(addr: string): void {
-  if (!/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(addr)) throw new Error(`Not a valid email address: "${addr}"`);
+  if (!/^[A-Za-z0-9._+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(addr)) throw new Error(`Not a valid email address: "${addr}"`);
 }
 
 export async function sendReport(transport: MailTransport, opts: { from: string; to: string; date: string; markdown: string }): Promise<void> {
@@ -91,12 +91,19 @@ export function scheduleCommand(opts: {
     if (/\\$/.test(p)) throw new Error(`Remove the trailing backslash from: ${p}`);
   }
   const platform = opts.platform ?? process.platform;
+  if (platform !== "win32" && [opts.node, opts.cli, ...args].some((p) => p.includes("\\"))) {
+    throw new Error("Paths with a backslash are not supported in a crontab line");
+  }
   if (platform === "win32") {
     const extra = args.map((a) => ` \\"${a}\\"`).join("");
     const run = `\\"${opts.node}\\" \\"${opts.cli}\\" email --to ${opts.to}${extra}`;
+    // schtasks refuses a /TR longer than 261 characters; say so before running it.
+    if (run.replace(/\\"/g, '"').length > 261) throw new Error("The scheduled command is over the 261-character limit of Task Scheduler; use shorter paths");
     return `schtasks /Create /F /SC DAILY /ST ${opts.time} /TN agent-fleet-daily /TR "${run}"`;
   }
   const [h, m] = opts.time.split(":").map(Number);
   const extra = args.map((a) => ` '${a}'`).join("");
-  return `(crontab -l 2>/dev/null; echo "${m} ${h} * * * '${opts.node}' '${opts.cli}' email --to ${opts.to}${extra}") | crontab -`;
+  // Replaces an earlier agent-fleet line, so re-running --install does not add a second job.
+  const line = `${m} ${h} * * * '${opts.node}' '${opts.cli}' email --to ${opts.to}${extra} # agent-fleet-daily`;
+  return `(crontab -l 2>/dev/null | grep -v '# agent-fleet-daily$'; printf '%s\\n' "${line}") | crontab -`;
 }
