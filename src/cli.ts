@@ -175,6 +175,7 @@ async function main() {
     const events = await load(from, to);
     const tasks = summarizeTasks(events, gitResolver(), prices);
     for (const t of tasks) t.commits = commitsBetween(t.worktree, from, to);
+    attachNames(tasks, readOrcaWorkspaces(values["orca-db"]));
     const markdown = renderMarkdown(buildReport(date, tasks, agentBreakdown(events, costOf)));
     if (values["dry-run"]) {
       console.log(`To: ${values.to}\nSubject: Agent fleet report: ${date}\n\n${markdown}`);
