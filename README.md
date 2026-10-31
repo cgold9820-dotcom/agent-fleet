@@ -19,9 +19,12 @@ and turns that into per-task token and cost accounting plus a daily report.
 
 ## Quick start
 
+Requires Node 20+ (22.5+ for Orca workspace names).
+
 ```bash
 git clone https://github.com/cgold9820-dotcom/agent-fleet && cd agent-fleet
 npm install && npm run build
+npm link                                           # optional: puts `agent-fleet` on your PATH
 node dist/src/cli.js report                       # today, to stdout
 node dist/src/cli.js report --date 2026-10-30 --out reports/2026-10-30.md
 node dist/src/cli.js report --json                 # machine-readable
@@ -68,6 +71,14 @@ Log locations respect `CLAUDE_CONFIG_DIR` and `CODEX_HOME`, or pass `--claude-di
 ## Roadmap
 
 See [docs/ROADMAP.md](docs/ROADMAP.md): Cursor support, scheduled email digests.
+
+## Use as a library
+
+```ts
+import { readClaudeUsage, summarizeTasks, gitResolver } from "agent-fleet";
+
+const tasks = summarizeTasks(await readClaudeUsage(), gitResolver());
+```
 
 ## Development
 
