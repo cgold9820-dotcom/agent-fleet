@@ -18,6 +18,8 @@ export interface TestResult {
 export interface Candidate {
   worktree: string;
   branch: string;
+  /** Orca workspace name, when known. */
+  name?: string;
   commits: number;
   filesChanged: number;
   insertions: number;
@@ -111,11 +113,16 @@ export function usageFor(worktree: string, tasks: TaskSummary[]) {
 /** Passing tests first, then higher judge score, then cheaper, then smaller diffs. */
 export function rankCandidates(cs: Candidate[]): Candidate[] {
   const testScore = (c: Candidate) => (c.test === undefined ? 1 : c.test.passed ? 0 : 2);
-  const judged = (c: Candidate) => (c.judge?.status === "scored" ? c.judge.score.overall : 0);
+  // Judge scores only rank when every attempt was scored: a review that failed
+  // (e.g. a rate limit) says nothing about the attempt, and comparing scores
+  // pairwise only where both exist would not be a consistent ordering.
+  const allScored = cs.every((c) => c.judge?.status === "scored");
+  const score = (c: Candidate) => (c.judge?.status === "scored" ? c.judge.score.overall : 0);
+  const byJudge = (a: Candidate, b: Candidate) => (allScored ? score(b) - score(a) : 0);
   return [...cs].sort(
     (a, b) =>
       testScore(a) - testScore(b) ||
-      judged(b) - judged(a) ||
+      byJudge(a, b) ||
       a.costUsd - b.costUsd ||
       a.insertions + a.deletions - (b.insertions + b.deletions),
   );
@@ -135,7 +142,7 @@ export function renderComparison(base: string, ranked: Candidate[], testCommand?
   ranked.forEach((c, i) => {
     const test = c.test ? (c.test.passed ? `pass (${(c.test.durationMs / 1000).toFixed(1)}s)` : `FAIL (exit ${c.test.exitCode})`) : "n/a";
     lines.push(
-      `| ${i + 1} | \`${c.branch}\` | ${test} |${anyJudged ? ` ${judgeCell(c.judge)} |` : ""} ${c.agents.join(", ") || "-"} | ${tok(c.tokens)} | ${usd(c.costUsd)} | ${c.commits} | ${
+      `| ${i + 1} | ${c.name ? `${mdCell(c.name)} ` : ""}\`${c.branch}\` | ${test} |${anyJudged ? ` ${judgeCell(c.judge)} |` : ""} ${c.agents.join(", ") || "-"} | ${tok(c.tokens)} | ${usd(c.costUsd)} | ${c.commits} | ${
         c.filesChanged
       } | +${c.insertions}/-${c.deletions} |`,
     );
@@ -169,4 +176,9 @@ export function renderComparison(base: string, ranked: Candidate[], testCommand?
 function judgeCell(j?: JudgeResult): string {
   if (!j) return "-";
   return j.status === "scored" ? `${j.score.overall}/10` : `skipped`;
+}
+
+/** Escape a free-text value for a Markdown table cell. */
+export function mdCell(s: string): string {
+  return s.replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
 }

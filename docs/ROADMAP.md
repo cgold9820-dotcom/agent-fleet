@@ -13,7 +13,7 @@ in parallel, let evals and a human pick the winner, and know what every task cos
 ## v0.2: dashboard
 - [x] `agent-fleet dashboard`: self-contained HTML (cost per day by agent, task table)
 - [ ] Live `serve` mode with per-repo drill-down
-- [ ] Read Orca's workspace metadata so tasks show their Orca names
+- [x] Read Orca's workspace metadata so tasks show their Orca names (report, dashboard, compare)
 - [ ] Cursor support (transcripts have no token counts: estimate from text length, flagged as estimated)
 
 ## v0.3: compare approaches
