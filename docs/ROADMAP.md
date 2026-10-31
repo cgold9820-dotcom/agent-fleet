@@ -23,5 +23,5 @@ in parallel, let evals and a human pick the winner, and know what every task cos
 - [x] `agent-fleet pick` records the human's choice to build a dataset of "which approach won and why"
 
 ## v0.4: delivery
-- [ ] Scheduled daily digest by email (SMTP) and a static HTML report
+- [x] Scheduled daily digest by email (SMTP), with Task Scheduler / cron setup
 - [ ] Weekly trends: cost per merged task, cache hit rate, agent win rates
