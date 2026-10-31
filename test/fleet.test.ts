@@ -158,3 +158,29 @@ test("compare: diff stats, tests and token usage per worktree, ranked", async ()
   const md = renderComparison("main", ranked, "sh check.sh");
   assert.match(md, /FAIL \(exit 3\)/);
 });
+
+test("orca: reads workspace names from the profile database", async () => {
+  const { parseWorktreeMeta, readOrcaWorkspaces } = await import("../src/sources/orca.js");
+  const payload = JSON.stringify({
+    "repo1::E:\\wishlist-ws\\login": { displayName: "Login page", comment: "try OAuth", createdWithAgent: "claude" },
+    "repo1::/home/u/ws/x": { displayName: "", comment: "" },
+  });
+  const names = parseWorktreeMeta(payload);
+  assert.deepEqual(names.get("e:/wishlist-ws/login"), { name: "Login page", comment: "try OAuth", agent: "claude" });
+  assert.equal(names.size, 1, "entries without a display name are ignored");
+
+  assert.equal(readOrcaWorkspaces(join(tmpdir(), "no-such-orca.db")).size, 0);
+
+  let sqlite: any;
+  try {
+    sqlite = await import("node:sqlite");
+  } catch {
+    return; // Node 20 has no built-in SQLite; the reader returns an empty map there.
+  }
+  const db = join(mkdtempSync(join(tmpdir(), "fleet-orca-")), "profile-state.db");
+  const w = new sqlite.DatabaseSync(db);
+  w.exec("CREATE TABLE profile_state_documents (domain TEXT PRIMARY KEY NOT NULL, payload TEXT NOT NULL, domain_version INTEGER NOT NULL, revision INTEGER NOT NULL, updated_at INTEGER NOT NULL, content_hash TEXT NOT NULL)");
+  w.prepare("INSERT INTO profile_state_documents VALUES (?, ?, 1, 1, 0, 'h')").run("worktreeMeta", payload);
+  w.close();
+  assert.equal(readOrcaWorkspaces(db).get("e:/wishlist-ws/login")?.name, "Login page");
+});

@@ -121,3 +121,11 @@ export function commitsBetween(worktree: string, from: Date, to: Date): string[]
     return [];
   }
 }
+
+/** Attach Orca workspace names (or any path-keyed names) to tasks. */
+export function attachNames(tasks: TaskSummary[], names: Map<string, { name: string }>): void {
+  for (const t of tasks) {
+    const n = names.get(t.worktree);
+    if (n) t.name = n.name;
+  }
+}
