@@ -115,7 +115,7 @@ test("compare: diff stats, tests and token usage per worktree, ranked", async ()
 
   const root = realpathSync.native(mkdtempSync(join(tmpdir(), "fleet-cmp-")));
   const repo = join(root, "app");
-  const git = (...args: string[]) => execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...args], { stdio: "ignore" });
+  const git = (...args: string[]) => execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "-c", "core.autocrlf=false", ...args], { stdio: "ignore" });
   git("init", "-q", "-b", "main", repo);
   writeFileSync(join(repo, "check.sh"), "exit 0\n");
   git("-C", repo, "add", ".");
@@ -129,12 +129,14 @@ test("compare: diff stats, tests and token usage per worktree, ranked", async ()
   git("-C", a, "commit", "-qm", "v1");
   writeFileSync(join(b, "check.sh"), "echo boom\nexit 3\n"); // uncommitted, still counted
   writeFileSync(join(b, "notes.md"), "a\nb\nc\n"); // untracked, still counted
+  writeFileSync(join(b, "empty.txt"), ""); // untracked and empty: a file, no lines
 
   assert.deepEqual(listWorktrees(repo).map(normalizePath), [a, b].map(normalizePath));
   const sa = diffStats(a, "main");
   assert.deepEqual([sa.branch, sa.commits, sa.insertions], ["feat/v1", 1, 2]);
   const sb = diffStats(b, "main");
-  assert.deepEqual([sb.commits, sb.filesChanged, sb.insertions], [0, 2, 5]);
+  assert.deepEqual([sb.commits, sb.filesChanged, sb.insertions], [0, 3, 5]);
+  assert.throws(() => diffStats(a, "no-such-branch"), /no-such-branch/);
 
   const ta = runTests(a, "sh check.sh");
   const tb = runTests(b, "sh check.sh");

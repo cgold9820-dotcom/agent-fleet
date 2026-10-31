@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { normalizePath } from "./tasks.js";
 import type { AgentName, TaskSummary } from "./types.js";
@@ -31,14 +31,17 @@ export interface Candidate {
 const git = (cwd: string, ...args: string[]) =>
   execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
 
-/** All linked worktrees of the repo at `repoPath`, excluding the main checkout. */
+/**
+ * All linked worktrees of the repo at `repoPath`, excluding the main checkout
+ * and stale entries whose folder is gone.
+ */
 export function listWorktrees(repoPath: string): string[] {
   const out = git(repoPath, "worktree", "list", "--porcelain");
   const paths = out
     .split(/\r?\n/)
     .filter((l) => l.startsWith("worktree "))
     .map((l) => l.slice("worktree ".length));
-  return paths.slice(1);
+  return paths.slice(1).filter((p) => existsSync(p));
 }
 
 /** Parse `git diff --shortstat` output, e.g. " 3 files changed, 10 insertions(+), 2 deletions(-)". */
@@ -58,7 +61,12 @@ export function parseShortstat(s: string): { filesChanged: number; insertions: n
  */
 export function diffStats(worktree: string, base: string) {
   const branch = git(worktree, "rev-parse", "--abbrev-ref", "HEAD");
-  const mergeBase = git(worktree, "merge-base", base, "HEAD");
+  let mergeBase: string;
+  try {
+    mergeBase = git(worktree, "merge-base", base, "HEAD");
+  } catch {
+    throw new Error(`${worktree} (${branch}): no common history with "${base}". Check --base (e.g. origin/main).`);
+  }
   const commits = Number(git(worktree, "rev-list", "--count", `${mergeBase}..HEAD`));
   const stats = parseShortstat(git(worktree, "diff", "--shortstat", mergeBase));
   const untracked = git(worktree, "ls-files", "--others", "--exclude-standard").split(/\r?\n/).filter(Boolean);
@@ -66,7 +74,7 @@ export function diffStats(worktree: string, base: string) {
     stats.filesChanged++;
     try {
       const content = readFileSync(join(worktree, file), "utf8");
-      stats.insertions += content.split("\n").length - (content.endsWith("\n") ? 1 : 0);
+      if (content) stats.insertions += content.split("\n").length - (content.endsWith("\n") ? 1 : 0);
     } catch {
       // unreadable file: count it, not its lines
     }
@@ -76,7 +84,7 @@ export function diffStats(worktree: string, base: string) {
 
 export function runTests(worktree: string, command: string, timeoutMs = 10 * 60_000): TestResult {
   const start = Date.now();
-  const r = spawnSync(command, { cwd: worktree, shell: true, encoding: "utf8", timeout: timeoutMs });
+  const r = spawnSync(command, { cwd: worktree, shell: true, encoding: "utf8", timeout: timeoutMs, maxBuffer: 64 * 1024 * 1024 });
   const output = `${r.stdout ?? ""}${r.stderr ?? ""}`;
   return {
     passed: r.status === 0,
