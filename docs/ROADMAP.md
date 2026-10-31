@@ -11,7 +11,8 @@ in parallel, let evals and a human pick the winner, and know what every task cos
 - [x] Tests with fixtures, including a real linked-worktree case
 
 ## v0.2: dashboard
-- [ ] `agent-fleet serve`: local web dashboard (tasks, cost over time, per-repo view)
+- [x] `agent-fleet dashboard`: self-contained HTML (cost per day by agent, task table)
+- [ ] Live `serve` mode with per-repo drill-down
 - [ ] Read Orca's workspace metadata so tasks show their Orca names
 - [ ] Cursor support (transcripts have no token counts: estimate from text length, flagged as estimated)
 
